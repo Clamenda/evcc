@@ -80,3 +80,23 @@ func TestQueryTariffs(t *testing.T) {
 	require.InDelta(t, 0.3, *agg[0].GridMin, 0.001)
 	require.InDelta(t, 0.5, *agg[0].GridMax, 0.001)
 }
+
+func TestQueryTariffsTemperature(t *testing.T) {
+	require.NoError(t, db.NewInstance("sqlite", ":memory:"))
+	require.NoError(t, db.Instance.AutoMigrate(new(tariffValue)))
+	slot := time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC)
+	for i, temp := range []float64{-10, 0, 4} {
+		require.NoError(t, PersistTariffs(slot.Add(time.Duration(i)*15*time.Minute), nil, nil, nil, &temp))
+	}
+	grid := 0.3
+	require.NoError(t, PersistTariffs(slot.Add(45*time.Minute), &grid, nil, nil, nil))
+	for _, aggregate := range []string{"hour", "day", "month"} {
+		t.Run(aggregate, func(t *testing.T) {
+			res, err := QueryTariffs(slot, slot.Add(time.Hour), aggregate)
+			require.NoError(t, err)
+			require.Len(t, res, 1)
+			require.NotNil(t, res[0].Temperature)
+			require.InDelta(t, -2, *res[0].Temperature, 0.001)
+		})
+	}
+}

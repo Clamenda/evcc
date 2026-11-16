@@ -1327,6 +1327,9 @@
       "versus": "{value} statt {reference}"
     },
     "summary": "Zusammenfassung",
+    "temperature": {
+      "label": "Außentemperatur"
+    },
     "title": "Energie"
   },
   "footer": {
