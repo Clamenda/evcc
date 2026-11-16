@@ -116,6 +116,7 @@ export default defineComponent({
 		height: { type: Number, default: 180 },
 		// soc or temperature of the day's slots in a panel below the bars
 		socTemp: Boolean,
+		temperatures: { type: Array as PropType<(number | null)[] | null>, default: null },
 		// import and export price per category: in the tooltip, and in a panel below
 		// the bars when a price moves
 		prices: { type: Object as PropType<PriceOverlay | null>, default: null },
@@ -244,6 +245,11 @@ export default defineComponent({
 		},
 		// below the bars: soc or temperature of the day as line and area, or the grid prices
 		subPanel(): SubPanel | null {
+			if (this.temperatures) {
+				return socTempPanel(this.temperatures, colors.muted || this.color, true, (v) =>
+					this.fmtNumber(v, 0, "celsius")
+				);
+			}
 			if (!this.socTempValues) return this.pricePanel;
 			const isTemp = this.socTempIsTemp;
 			return socTempPanel(
@@ -911,6 +917,13 @@ export default defineComponent({
 								values: [socTempText],
 							});
 							return tooltipTable(head, named);
+						}
+						const temperature = this.temperatures?.[first.dataIndex];
+						if (temperature != null) {
+							rows.push({
+								name: this.$t("energy.temperature.label"),
+								values: [this.fmtTemperature(temperature)],
+							});
 						}
 						return tooltipTable(
 							head,

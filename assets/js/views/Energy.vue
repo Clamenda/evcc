@@ -72,6 +72,7 @@
 										:to="to"
 										single-value
 										:height="OVERVIEW_HEIGHT"
+										:temperatures="temperatureValues"
 										stacked
 										auto-range
 										:upper-label="$t('energy.flow.pv')"
@@ -956,6 +957,16 @@ export default defineComponent({
 				import: band(tariffs.import, "cost", "pricedEnergy"),
 				feedin: band(tariffs.feedin, "returnCost", "pricedReturnEnergy"),
 			};
+		},
+		temperatureValues(): (number | null)[] | null {
+			const values = Array.from({ length: this.bucketCount }, (): number | null => null);
+			for (const slot of this.tariffs) {
+				if (typeof slot.temperature !== "number" || !Number.isFinite(slot.temperature))
+					continue;
+				const i = this.bucketIndex(slot.start);
+				if (i >= 0 && i < values.length) values[i] = slot.temperature;
+			}
+			return values.some((v) => v !== null) ? values : null;
 		},
 		// the tariff per bucket, its average and range
 		gridPrices(): PriceOverlay | null {

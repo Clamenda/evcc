@@ -1502,6 +1502,9 @@
       "savingsTooltip": "Compared to buying the consumed {energy} from the grid.",
       "versus": "{value} vs. {reference}"
     },
+    "temperature": {
+      "label": "Outdoor temperature"
+    },
     "title": "Energy"
   },
   "issue": {

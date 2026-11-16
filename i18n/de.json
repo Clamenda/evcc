@@ -1327,6 +1327,9 @@
       "savingsTooltip": "Im Vergleich zum Bezug der verbrauchten {energy} aus dem Netz.",
       "versus": "{value} statt {reference}"
     },
+    "temperature": {
+      "label": "Außentemperatur"
+    },
     "title": "Energie"
   },
   "footer": {
