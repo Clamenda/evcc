@@ -765,10 +765,11 @@ export default defineComponent({
 						}[]
 					) => {
 						if (!params?.length) return "";
-						const hasData = params.some((p) => p.value != null);
-						if (!hasData) return "";
 						const first = params.find((p) => p.dataIndex != null);
 						if (!first) return "";
+						const temperature = this.temperatures?.[first.dataIndex];
+						const hasData = params.some((p) => p.value != null) || temperature != null;
+						if (!hasData) return "";
 						const ts = cats[first.dataIndex];
 						const head = ts != null ? tooltipDate(ts) : "";
 
@@ -918,7 +919,6 @@ export default defineComponent({
 							});
 							return tooltipTable(head, named);
 						}
-						const temperature = this.temperatures?.[first.dataIndex];
 						if (temperature != null) {
 							rows.push({
 								name: this.$t("energy.temperature.label"),
