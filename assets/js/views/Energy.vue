@@ -511,6 +511,7 @@ export default defineComponent({
 			CONSUMER_VIEW,
 			OVERVIEW_HEIGHT,
 			loading: false,
+			fetchVersion: 0,
 			focusedPv: null as number | null,
 			sourcesDetail: { title: "", rows: [] as SourceRow[] },
 			startDate: new Date(2020, 0, 1),
@@ -1342,6 +1343,7 @@ export default defineComponent({
 		},
 		async fetchData() {
 			this.loading = true;
+			const version = ++this.fetchVersion;
 			const requestKey = this.fetchKey;
 			try {
 				const [flow, energy, tariffs] = await Promise.all([
@@ -1350,7 +1352,7 @@ export default defineComponent({
 					this.fetchTariffs(this.from, this.to),
 				]);
 				// a newer request superseded this one
-				if (requestKey !== this.fetchKey) return;
+				if (version !== this.fetchVersion || requestKey !== this.fetchKey) return;
 				const anchor = this.scrollAnchor();
 				this.flow = flow.data || null;
 				this.series = energy.data || [];
@@ -1363,7 +1365,7 @@ export default defineComponent({
 			} catch (e) {
 				console.error("Failed to load energy flow", e);
 			} finally {
-				if (requestKey === this.fetchKey) this.loading = false;
+				if (version === this.fetchVersion) this.loading = false;
 			}
 		},
 		fetchFlow(from: Date, to: Date) {

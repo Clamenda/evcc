@@ -8,6 +8,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -109,8 +110,9 @@ type Site struct {
 	prioritizer *prioritizer.Prioritizer // Power budgets
 	stats       *Stats                   // Stats
 
-	collectors map[string]*metrics.Collector // keyed by meter ref
-	tariffSlot time.Time                     // last persisted tariff slot
+	collectors     map[string]*metrics.Collector // keyed by meter ref
+	tariffSlot     time.Time                     // last persisted tariff slot
+	historyChanged atomic.Bool
 
 	// cached measurement state, guarded by RWMutex
 	siteState
@@ -225,8 +227,8 @@ func (site *Site) Boot(log *util.Logger, loadpoints []*Loadpoint, tariffs *tarif
 	}
 	site.collectors[metrics.Home] = me
 
-	// reload history in the UI on each persisted 15min slot instead of polling
-	metrics.OnPersist = func(slot time.Time) { site.publish(keys.HistoryUpdated, slot) }
+	// Meter collectors can persist in parallel before the loadpoint and tariffs are updated.
+	metrics.OnPersist = func(time.Time) { site.historyChanged.Store(true) }
 
 	// upload telemetry on shutdown
 	if telemetry.Enabled() {
@@ -1364,6 +1366,7 @@ func (site *Site) update(lp updater) {
 
 		site.updatePower(lp, state, totalChargePower, consumption, feedin)
 	}
+	site.publishHistoryUpdate()
 
 	// smart grid charging
 	rate := site.currentRate(consumption)
@@ -1389,6 +1392,13 @@ func (site *Site) update(lp updater) {
 	site.publishSuggestions()
 
 	site.stats.Update(site)
+}
+
+func (site *Site) publishHistoryUpdate() {
+	if site.historyChanged.Swap(false) {
+		// Different loadpoints can finish the same slot in different update cycles.
+		site.publish(keys.HistoryUpdated, time.Now().UTC().Format(time.RFC3339Nano))
+	}
 }
 
 // updatePower calculates the site power balance and updates the given loadpoint

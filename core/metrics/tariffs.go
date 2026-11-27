@@ -80,13 +80,17 @@ func PersistTariffs(ts time.Time, grid, feedin, co2, temperature *float64) error
 		return nil
 	}
 
-	return db.Instance.Clauses(clause.OnConflict{DoNothing: true}).Create(&tariffValue{
+	res := db.Instance.Clauses(clause.OnConflict{DoNothing: true}).Create(&tariffValue{
 		Timestamp:   ts.Unix(),
 		Grid:        grid,
 		FeedIn:      feedin,
 		Co2:         co2,
 		Temperature: temperature,
-	}).Error
+	})
+	if res.Error == nil && res.RowsAffected > 0 && OnPersist != nil {
+		OnPersist(ts)
+	}
+	return res.Error
 }
 
 // TariffSlot is one persisted 15 minute slot of tariff values, or the average

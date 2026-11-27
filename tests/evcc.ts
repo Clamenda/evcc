@@ -58,7 +58,7 @@ export function baseUrl() {
   return `http://localhost:${workerPort()}`;
 }
 
-function dbPath() {
+export function dbPath() {
   const file = `evcc-${workerPort()}.db`;
   return path.join(os.tmpdir(), file);
 }

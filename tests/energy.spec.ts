@@ -1,5 +1,6 @@
-import { test, expect } from "@playwright/test";
-import { start, stop, baseUrl } from "./evcc";
+import { execFileSync } from "node:child_process";
+import { test, expect, type WebSocketRoute } from "@playwright/test";
+import { start, stop, baseUrl, dbPath } from "./evcc";
 import { expectModalVisible, expectModalHidden } from "./utils";
 
 test.use({ baseURL: baseUrl() });
@@ -375,5 +376,41 @@ test.describe("page", () => {
   test("empty state", async ({ page }) => {
     await page.goto("/#/energy?year=2026&month=1&day=1");
     await expect(page.getByText("No energy data available")).toBeVisible();
+  });
+
+  test("refreshes loadpoints written after the grid", async ({ page }) => {
+    const slotSeconds = 15 * 60;
+    const slot = Math.floor(Date.now() / (slotSeconds * 1000)) * slotSeconds;
+    const date = new Date(slot * 1000);
+    const write = (sql: string) => execFileSync("sqlite3", [dbPath(), sql]);
+    write(`
+      INSERT INTO entities (id, "group", name, title, is_temp)
+      VALUES (99, 'grid', 'refresh-grid', 'grid', 0),
+             (100, 'loadpoint', 'late-charger', 'Late charger', 0),
+             (101, 'loadpoint', 'late-heater', 'Late heater', 1);
+      INSERT INTO meters (meter, ts, energy, return_energy) VALUES (99, ${slot}, 5, 0);
+    `);
+
+    let socket: WebSocketRoute | undefined;
+    await page.routeWebSocket("/ws", (ws) => {
+      ws.connectToServer();
+      socket = ws;
+    });
+    const day = `year=${date.getFullYear()}&month=${date.getMonth() + 1}&day=${date.getDate()}`;
+    await page.goto(`/#/energy?${day}`);
+    await expect(page.getByTestId("energy-grid")).toBeVisible();
+
+    if (!socket) throw new Error("websocket not connected");
+    for (const { id, title, energy, reading } of [
+      { id: 100, title: "Late charger 2.0 kWh", energy: 2, reading: 50 },
+      { id: 101, title: "Late heater 1.0 kWh", energy: 1, reading: 40 },
+    ]) {
+      write(`
+        INSERT INTO meters (meter, ts, energy, return_energy, soc_temp)
+        VALUES (${id}, ${slot}, ${energy}, 0, ${reading});
+      `);
+      socket.send(JSON.stringify({ historyUpdated: new Date(slot * 1000 + id).toISOString() }));
+      await expect(page.getByRole("heading", { name: title })).toBeVisible();
+    }
   });
 });

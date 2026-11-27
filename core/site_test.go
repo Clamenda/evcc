@@ -2,15 +2,66 @@ package core
 
 import (
 	"testing"
+	"time"
 
+	"github.com/benbjohnson/clock"
 	"github.com/evcc-io/evcc/api"
+	"github.com/evcc-io/evcc/core/keys"
+	"github.com/evcc-io/evcc/core/metrics"
 	"github.com/evcc-io/evcc/core/types"
+	"github.com/evcc-io/evcc/db"
+	"github.com/evcc-io/evcc/tariff"
 	"github.com/evcc-io/evcc/util"
 	"github.com/evcc-io/evcc/util/config"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.uber.org/mock/gomock"
 )
+
+func TestHistoryUpdateForLateLoadpoint(t *testing.T) {
+	require.NoError(t, db.NewInstance("sqlite", ":memory:"))
+	updates := make(chan util.Param, 4)
+	site := &Site{valueChan: updates}
+	previous := metrics.OnPersist
+	t.Cleanup(func() { metrics.OnPersist = previous })
+	metrics.OnPersist = func(time.Time) { site.historyChanged.Store(true) }
+
+	clk := clock.NewMock()
+	slot := clk.Now()
+	grid, err := metrics.NewCollector(metrics.Grid, "grid", "grid", metrics.WithClock(clk))
+	require.NoError(t, err)
+	lp, err := metrics.NewCollector(metrics.Loadpoint, "heater", "heater", metrics.WithClock(clk))
+	require.NoError(t, err)
+	require.NoError(t, grid.SetEnergy(2))
+	require.NoError(t, lp.SetEnergy(1))
+
+	clk.Add(tariff.SlotDuration)
+	require.NoError(t, grid.SetEnergy(0))
+	require.NoError(t, metrics.PersistTariffs(clk.Now(), new(0.3), nil, nil, nil))
+	require.Empty(t, updates)
+
+	site.publishHistoryUpdate()
+	require.Len(t, updates, 1)
+	first := <-updates
+	require.Equal(t, keys.HistoryUpdated, first.Key)
+
+	require.NoError(t, lp.SetEnergy(0))
+	site.publishHistoryUpdate()
+	require.Len(t, updates, 1)
+	second := <-updates
+	require.Equal(t, keys.HistoryUpdated, second.Key)
+	require.NotEqual(t, first.Val, second.Val)
+
+	series, err := metrics.QueryEnergy(slot, clk.Now(), "15m", false, metrics.EnergyFilter{Group: metrics.Loadpoint})
+	require.NoError(t, err)
+	require.Len(t, series, 1)
+	require.Len(t, series[0].Data, 1)
+	require.True(t, slot.Equal(series[0].Data[0].Start))
+	require.Equal(t, 1.0, series[0].Data[0].Energy)
+
+	site.publishHistoryUpdate()
+	require.Empty(t, updates)
+}
 
 // TestSitePowerPriorityAdjustment verifies that sitePower returns the adjustment
 // applied for battery priority below prioritySoc, such that adding it back yields

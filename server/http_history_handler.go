@@ -36,10 +36,15 @@ func historyRange(w http.ResponseWriter, r *http.Request) (from, to time.Time, o
 	return from, to, true
 }
 
-// cacheUntilNextSlot marks the response fresh until the next slot boundary, when
-// the data may change
-func cacheUntilNextSlot(w http.ResponseWriter) {
-	maxAge := time.Until(time.Now().Truncate(tariff.SlotDuration).Add(tariff.SlotDuration))
+func cacheHistory(w http.ResponseWriter, to time.Time) {
+	now := time.Now()
+	currentSlot := now.Truncate(tariff.SlotDuration)
+	// Collectors can still write the previous slot after the boundary.
+	if to.IsZero() || to.After(currentSlot.Add(-tariff.SlotDuration)) {
+		w.Header().Set("Cache-Control", "private, no-cache")
+		return
+	}
+	maxAge := currentSlot.Add(tariff.SlotDuration).Sub(now)
 	w.Header().Set("Cache-Control", fmt.Sprintf("private, max-age=%d", int(maxAge.Seconds())))
 }
 
@@ -89,7 +94,7 @@ func energyHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cacheUntilNextSlot(w)
+	cacheHistory(w, to)
 
 	jsonWrite(w, res)
 }
@@ -106,7 +111,7 @@ func energyFlowHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cacheUntilNextSlot(w)
+	cacheHistory(w, to)
 
 	jsonWrite(w, res)
 }
@@ -123,7 +128,7 @@ func tariffHistoryHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cacheUntilNextSlot(w)
+	cacheHistory(w, to)
 
 	jsonWrite(w, res)
 }

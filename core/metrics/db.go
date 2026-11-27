@@ -133,7 +133,7 @@ func SetupSchema() error {
 	return db.Instance.AutoMigrate(new(meter))
 }
 
-// OnPersist, if set, is called with the slot start after a slot is written.
+// OnPersist, if set, is called with the slot start after meter or tariff data is written.
 var OnPersist func(slot time.Time)
 
 // persist stores a completed 15min slot
