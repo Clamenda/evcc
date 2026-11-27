@@ -158,6 +158,68 @@ test.describe("page", () => {
   const slotX = (width: number, slot: number, slots = 96) =>
     36 + ((width - 72) * (slot + 0.5)) / slots;
 
+  for (const { period, slots, slot, outside, heaterSlot, heaterTemp, price, maxPrice } of [
+    {
+      period: "month",
+      slots: 30,
+      slot: 14,
+      outside: "16.0°C",
+      heaterSlot: 16,
+      heaterTemp: "44.0°C",
+      price: "30.0 ct/kWh",
+      maxPrice: "45.0 ct",
+    },
+    {
+      period: "year",
+      slots: 12,
+      slot: 8,
+      outside: "15.0°C",
+      heaterSlot: 8,
+      heaterTemp: "41.3°C",
+      price: "35.0 ct/kWh",
+      maxPrice: "40.0 ct",
+    },
+  ]) {
+    test(`auxiliary readings in ${period} charts`, async ({ page }) => {
+      await page.goto(`/#/energy?period=${period}&year=2026&month=9`);
+      const overview = page.getByTestId("energy-flow").getByTestId("group-chart-meter");
+      const grid = page.getByTestId("group-chart-grid");
+      const battery = page.getByTestId("group-chart-battery");
+      const heater = page
+        .getByTestId("energy-loadpoint")
+        .filter({ has: page.getByRole("heading", { name: /Heat pump/ }) })
+        .getByTestId("group-chart-loadpoint");
+      const tooltip = page.getByRole("table");
+
+      for (const { chart, bucket, axis, row, value } of [
+        { chart: overview, bucket: slot, axis: "20°C", row: "Outdoor temperature", value: outside },
+        { chart: grid, bucket: slot, axis: maxPrice, row: "ø Price", value: price },
+        { chart: battery, bucket: slot, axis: "100%", row: "ø charge", value: "60%" },
+        {
+          chart: heater,
+          bucket: heaterSlot,
+          axis: "50°C",
+          row: "ø temperature",
+          value: heaterTemp,
+        },
+      ]) {
+        await expect(chart.getByText(axis, { exact: true })).toBeVisible();
+        const box = await chart.boundingBox();
+        if (!box) throw new Error("chart not visible");
+        await chart.hover({ position: { x: slotX(box.width, bucket, slots), y: box.height - 40 } });
+        await expect(tooltip.getByRole("row", { name: row })).toContainText(value);
+        if (chart === grid) {
+          await expect(tooltip.getByRole("row", { name: row })).toContainText("10.0 ct/kWh");
+        }
+        if (chart !== overview) {
+          await expect(tooltip.getByRole("row", { name: "Outdoor temperature" })).toHaveCount(0);
+        }
+        await page.mouse.move(0, 0);
+        await expect(tooltip).toHaveCount(0);
+      }
+    });
+  }
+
   test("production tooltip with forecast", async ({ page }) => {
     await page.goto("/#/energy?year=2026&month=9&day=15");
     // 12:00: 2 kWh produced, 1.6 kWh forecast, as average power

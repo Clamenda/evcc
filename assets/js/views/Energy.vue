@@ -985,7 +985,9 @@ export default defineComponent({
 				}
 				return out.avg.some((v) => v !== null) ? out : undefined;
 			};
-			return { import: band("grid"), feedin: band("feedin") };
+			const importPrice = band("grid");
+			const feedinPrice = band("feedin");
+			return importPrice || feedinPrice ? { import: importPrice, feedin: feedinPrice } : null;
 		},
 		gridImport(): number {
 			return this.gridSeries.reduce((acc, s) => acc + sumEnergy(s), 0);

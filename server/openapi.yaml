@@ -1804,7 +1804,7 @@ paths:
                             description: kWh exported or discharged
                           socTemp:
                             type: number
-                            description: State of charge in percent or temperature of a single slot
+                            description: State of charge in percent or temperature in °C. Day and month buckets average the available readings. Shorter buckets report a single slot reading when available.
                           cost:
                             type: number
                             description: Grid import cost, where a price exists

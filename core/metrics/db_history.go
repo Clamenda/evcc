@@ -19,7 +19,7 @@ type Slot struct {
 	End          time.Time `json:"end"`
 	Energy       float64   `json:"energy"`
 	ReturnEnergy float64   `json:"returnEnergy"`
-	SocTemp      *float64  `json:"socTemp,omitempty"` // a single slot's value
+	SocTemp      *float64  `json:"socTemp,omitempty"` // slot reading or daily or monthly average
 	// a price may not exist for every slot, priced energy is tracked separately to keep averages correct
 	Cost               *float64 `json:"cost,omitempty"`               // grid import, where a price exists
 	PricedEnergy       *float64 `json:"pricedEnergy,omitempty"`       // kWh with a price
@@ -159,10 +159,18 @@ func QueryEnergy(from, to time.Time, aggregate string, grouped bool, filter ...E
 		Cost, PricedEnergy, ReturnCost, PricedReturnEnergy *float64
 	}
 
-	// soc_temp only for a single slot bucket; omitted for grouped sums
+	// Short intervals carry a single slot reading. Grouped sums omit device readings.
 	socCols := `, CASE WHEN COUNT(*) = 1 THEN m.soc_temp END AS soc_temp, e.is_temp AS is_temp`
 	if grouped {
 		socCols = ``
+	} else if aggregate == "day" || aggregate == "month" {
+		// A shared title can combine devices. Only average readings with a common unit across the series.
+		readingType := `CASE WHEN m.soc_temp IS NOT NULL THEN COALESCE(e.is_temp, 0) END`
+		series := ` OVER (PARTITION BY ` + titleExpr + `, e."group")`
+		minType := `MIN(MIN(` + readingType + `))` + series
+		maxType := `MAX(MAX(` + readingType + `))` + series
+		socCols = fmt.Sprintf(`, CASE WHEN %[1]s = %[2]s THEN AVG(m.soc_temp) END AS soc_temp,
+			COALESCE(%[2]s, e.is_temp) AS is_temp`, minType, maxType)
 	}
 
 	tx := db.Instance.Table("meters m").

@@ -45,9 +45,9 @@ export function socTempPanel(
   format: (v: number) => string
 ): SubPanel {
   // soc spans 0 to 100, temperature the data's range widened to full tens
+  const present = values.filter((v): v is number => v !== null);
   let [min, max] = [0, 100];
   if (isTemp) {
-    const present = values.filter((v): v is number => v !== null);
     min = Math.floor(Math.min(...present) / 10) * 10;
     max = Math.max(Math.ceil(Math.max(...present) / 10) * 10, min + 10);
   }
@@ -66,6 +66,7 @@ export function socTempPanel(
         data: slotStarts(values),
         smooth: true,
         ...hoverDot(color),
+        ...(present.length === 1 ? { itemStyle: { color } } : {}),
         connectNulls: true,
         lineStyle: { color, ...lineDefaults },
         areaStyle: { color: setAlpha(color, "40") },

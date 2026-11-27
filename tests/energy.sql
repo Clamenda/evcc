@@ -74,10 +74,14 @@ INSERT INTO `meters` VALUES (3, 1789725600, 0, 1);
 INSERT INTO `meters` VALUES (5, 1789725600, 1, 0);
 
 -- tariffs for all four slots: grid 0.30 (night 0.25 / 0.35), feed-in 0.10, co2 400 g/kWh
-INSERT INTO `tariffs` VALUES (1789466400, 0.3, 0.1, 400, NULL);
-INSERT INTO `tariffs` VALUES (1789467300, 0.3, 0.1, 400, NULL);
-INSERT INTO `tariffs` VALUES (1789502400, 0.25, 0.1, 400, NULL);
-INSERT INTO `tariffs` VALUES (1789503300, 0.35, 0.1, 400, NULL);
+INSERT INTO `tariffs` VALUES (1789466400, 0.3, 0.1, 400, 18);
+INSERT INTO `tariffs` VALUES (1789467300, 0.3, 0.1, 400, 22);
+INSERT INTO `tariffs` VALUES (1789502400, 0.25, 0.1, 400, 14);
+INSERT INTO `tariffs` VALUES (1789503300, 0.35, 0.1, 400, 10);
+INSERT INTO `tariffs` VALUES (1789552800, 0.45, 0.12, NULL, 11);
+
+-- 2026-10-01: a second month with different tariffs and temperature
+INSERT INTO `tariffs` VALUES (1790848800, 0.4, 0.12, NULL, 8);
 
 -- battery soc on 2026-09-15: charging at noon, discharging at night
 ALTER TABLE `meters` ADD COLUMN `soc_temp` real;
@@ -85,3 +89,8 @@ UPDATE `meters` SET soc_temp = 50 WHERE meter = 3 AND ts = 1789466400;
 UPDATE `meters` SET soc_temp = 60 WHERE meter = 3 AND ts = 1789467300;
 UPDATE `meters` SET soc_temp = 70 WHERE meter = 3 AND ts = 1789502400;
 UPDATE `meters` SET soc_temp = 60 WHERE meter = 3 AND ts = 1789503300;
+
+-- heat pump temperature on September 16 and while idle on September 17
+UPDATE `meters` SET soc_temp = 42 WHERE meter = 8 AND ts = 1789552800;
+INSERT INTO `meters` (meter, ts, energy, return_energy, soc_temp) VALUES (8, 1789553700, 0, 0, 38);
+INSERT INTO `meters` (meter, ts, energy, return_energy, soc_temp) VALUES (8, 1789639200, 0, 0, 44);

@@ -181,7 +181,7 @@ func TestQueryEnergySoc(t *testing.T) {
 	from := base.Add(-time.Hour).UTC()
 	to := base.Add(time.Hour).UTC()
 
-	// an aggregated bucket has no soc, a single slot carries its value
+	// Hourly buckets still carry a reading only when they contain a single slot.
 	res, err := QueryEnergy(from, to, "hour", false)
 	require.NoError(t, err)
 	require.Len(t, res, 1)
@@ -193,12 +193,63 @@ func TestQueryEnergySoc(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, res[0].Data, 2)
 	require.Equal(t, 80.0, *res[0].Data[0].SocTemp)
+	for _, aggregate := range []string{"day", "month"} {
+		res, err = QueryEnergy(from, to, aggregate, false)
+		require.NoError(t, err)
+		require.Len(t, res, 1)
+		require.Len(t, res[0].Data, 1)
+		require.Equal(t, new(75.0), res[0].Data[0].SocTemp)
+		require.False(t, res[0].IsTemp)
+	}
 
 	// grouped sums omit the per-entity snapshot
-	res, err = QueryEnergy(from, to, "hour", true)
+	res, err = QueryEnergy(from, to, "day", true)
 	require.NoError(t, err)
 	require.Len(t, res, 1)
 	require.Nil(t, res[0].Data[0].SocTemp)
+}
+
+func TestQueryEnergyTemperatureAverages(t *testing.T) {
+	require.NoError(t, db.NewInstance("sqlite", ":memory:"))
+	require.NoError(t, SetupSchema())
+
+	heater := entity{Name: "heater", Title: "Heating", Group: Loadpoint, IsTemp: true}
+	require.NoError(t, db.Instance.Create(&heater).Error)
+	base := time.Date(2026, 4, 15, 16, 0, 0, 0, time.Local)
+	nextDay := base.AddDate(0, 0, 1)
+	end := base.AddDate(0, 0, 3)
+	require.NoError(t, persist(heater, base, 1, 0, new(0.0), false))
+	require.NoError(t, persist(heater, base.Add(15*time.Minute), 1, 0, new(6.0), false))
+	require.NoError(t, persist(heater, nextDay, 0, 0, new(12.0), false))
+	require.NoError(t, persist(heater, nextDay.AddDate(0, 0, 1), 1, 0, nil, false))
+
+	res, err := QueryEnergy(base, end, "day", false)
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	require.True(t, res[0].IsTemp)
+	require.Len(t, res[0].Data, 3)
+	require.Equal(t, new(3.0), res[0].Data[0].SocTemp)
+	require.Equal(t, new(12.0), res[0].Data[1].SocTemp)
+	require.Nil(t, res[0].Data[2].SocTemp)
+
+	res, err = QueryEnergy(base, end, "month", false)
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	require.True(t, res[0].IsTemp)
+	require.Len(t, res[0].Data, 1)
+	require.Equal(t, new(6.0), res[0].Data[0].SocTemp)
+
+	charger := entity{Name: "charger", Title: heater.Title, Group: Loadpoint}
+	require.NoError(t, db.Instance.Create(&charger).Error)
+	require.NoError(t, persist(charger, nextDay.AddDate(0, 0, 1), 2, 0, new(80.0), false))
+	res, err = QueryEnergy(base, end, "day", false)
+	require.NoError(t, err)
+	require.Len(t, res, 1)
+	require.Len(t, res[0].Data, 3)
+	for _, slot := range res[0].Data {
+		require.Nil(t, slot.SocTemp)
+	}
+	require.Equal(t, 3.0, res[0].Data[2].Energy)
 }
 
 func TestQueryEnergyGridCost(t *testing.T) {

@@ -55,7 +55,7 @@ export interface HistorySlot {
 	end: string;
 	energy: number;
 	returnEnergy: number;
-	socTemp?: number; // a single slot's soc in percent or temperature
+	socTemp?: number; // soc in percent or temperature, averaged for days and months
 	cost?: number; // grid import, where a price exists
 	pricedEnergy?: number; // kWh with a price
 	returnCost?: number; // grid export, where a price exists
@@ -114,7 +114,7 @@ export default defineComponent({
 		// bidirectional data with an automatic range instead of a symmetric one
 		autoRange: Boolean,
 		height: { type: Number, default: 180 },
-		// soc or temperature of the day's slots in a panel below the bars
+		// device soc or temperature in a panel below the bars
 		socTemp: Boolean,
 		temperatures: { type: Array as PropType<(number | null)[] | null>, default: null },
 		// import and export price per category: in the tooltip, and in a panel below
@@ -229,10 +229,13 @@ export default defineComponent({
 		isBidirectional(): boolean {
 			return isBidirectional(this.group, this.series);
 		},
-		// day view: soc or temperature per category from the first series carrying it
+		socTempSeries(): HistorySeries | undefined {
+			return this.socTemp
+				? this.visibleSeries.find((s) => s.data.some((slot) => slot.socTemp != null))
+				: undefined;
+		},
 		socTempValues(): (number | null)[] | null {
-			if (this.period !== PERIODS.DAY || !this.socTemp) return null;
-			const source = this.series.find((s) => s.data.some((slot) => slot.socTemp != null));
+			const source = this.socTempSeries;
 			if (!source) return null;
 			const out: (number | null)[] = this.categoryKeys.map(() => null);
 			for (const slot of source.data) {
@@ -241,9 +244,9 @@ export default defineComponent({
 				);
 				if (idx >= 0) out[idx] = slot.socTemp ?? null;
 			}
-			return out;
+			return out.some((v) => v !== null) ? out : null;
 		},
-		// below the bars: soc or temperature of the day as line and area, or the grid prices
+		// below the bars: outside temperature, device readings or grid prices
 		subPanel(): SubPanel | null {
 			if (this.temperatures) {
 				return socTempPanel(this.temperatures, colors.muted || this.color, true, (v) =>
@@ -374,7 +377,7 @@ export default defineComponent({
 			};
 		},
 		socTempIsTemp(): boolean {
-			return !!this.series.find((s) => s.data.some((slot) => slot.socTemp != null))?.isTemp;
+			return !!this.socTempSeries?.isTemp;
 		},
 		categoryTimestamps(): number[] {
 			const out: number[] = [];
@@ -524,10 +527,7 @@ export default defineComponent({
 						}
 					: {}),
 			});
-			// grid 0 only has the boundary axis without a panel
-			result.push(
-				...(this.subPanel ? this.subPanel.series : [...edges(casing), ...edges(overlay)])
-			);
+			result.push(...edges(casing), ...edges(overlay), ...(this.subPanel?.series ?? []));
 
 			// Always render import + export series per entity, even if one direction
 			// is empty (null-filled). Stable series ids/structure across renders so
@@ -710,8 +710,8 @@ export default defineComponent({
 			const keys = this.categoryKeys;
 			const formatLabel = this.labelForTimestamp;
 			const tooltipDate = this.tooltipDateLabel;
-			// the sub panel owns axis index 1 and only exists in the day view
-			const weekMarkers = this.period === PERIODS.MONTH && !this.subPanel;
+			const weekMarkers =
+				this.period === PERIODS.MONTH && (!this.subPanel || this.socTempValues);
 			const barGrid = {
 				...energyGrid(),
 				...(this.showXAxis ? {} : { bottom: 4 }),
@@ -768,7 +768,11 @@ export default defineComponent({
 						const first = params.find((p) => p.dataIndex != null);
 						if (!first) return "";
 						const temperature = this.temperatures?.[first.dataIndex];
-						const hasData = params.some((p) => p.value != null) || temperature != null;
+						const socTemp = this.socTempValues?.[first.dataIndex];
+						const hasData =
+							params.some((p) => p.value != null) ||
+							temperature != null ||
+							socTemp != null;
 						if (!hasData) return "";
 						const ts = cats[first.dataIndex];
 						const head = ts != null ? tooltipDate(ts) : "";
@@ -887,9 +891,7 @@ export default defineComponent({
 								total: true,
 							});
 						}
-						// one entity with its soc or temperature in the day view: a named row
-						// per value
-						const socTemp = this.socTempValues?.[first.dataIndex];
+						// one entity with its soc or temperature: a named row per value
 						if (socTemp != null && !showName) {
 							const socTempText = this.socTempIsTemp
 								? this.fmtTemperature(socTemp)
@@ -913,8 +915,12 @@ export default defineComponent({
 											values: [formatValue(t.energy)],
 										},
 									];
+							const readingLabel = label(this.socTempIsTemp ? "temperature" : "soc");
 							named.push({
-								name: label(this.socTempIsTemp ? "temperature" : "soc"),
+								name:
+									this.period === PERIODS.DAY
+										? readingLabel
+										: `ø ${readingLabel}`,
 								values: [socTempText],
 							});
 							return tooltipTable(head, named);
@@ -932,18 +938,21 @@ export default defineComponent({
 						);
 					},
 				},
-				xAxis: this.subPanel
-					? [
-							barXAxis,
-							{
-								...barXAxis,
-								gridIndex: 1,
-								axisLine: { show: false },
-								axisLabel: xAxisLabel,
-							},
-							this.subPanel.xAxis,
-						]
-					: [barXAxis, boundaryAxis(cats.length)],
+				xAxis: [
+					barXAxis,
+					boundaryAxis(cats.length),
+					...(this.subPanel
+						? [
+								this.subPanel.xAxis,
+								{
+									...barXAxis,
+									gridIndex: 1,
+									axisLine: { show: false },
+									axisLabel: xAxisLabel,
+								},
+							]
+						: []),
+				],
 				yAxis: [
 					forecastYAxis({
 						// automatic range must be allowed below zero for the export band
